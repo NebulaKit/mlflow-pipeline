@@ -1,0 +1,8 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+
+# Conda environment lockfiles
+environment-win-64.lock.yaml
+
+# MLflow local logs
+mlruns/

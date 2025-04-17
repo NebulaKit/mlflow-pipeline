@@ -1,0 +1,12 @@
+name: ml-pipeline
+
+conda_env: environment.yaml
+
+entry_points:
+  main:
+    parameters:
+      data_path: {type: str, default: "data/raw/synthetic_lipidomics.csv"}
+      label_col: {type: str, default: "Group"}
+      experiment_name: {type: str, default: "Lipidomics_ML_Models"}
+    command: >
+      python main.py --data_path {data_path} --label_col {label_col}
