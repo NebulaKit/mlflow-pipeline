@@ -16,5 +16,5 @@ def get_classifiers():
         'DecisionTree': DecisionTreeClassifier(),
         'RandomForest': RandomForestClassifier(),
         'ExtraTrees': ExtraTreesClassifier(),
-        #'MLP': MLPClassifier(max_iter=1000)
+        'MLP': MLPClassifier(max_iter=1000)
     }

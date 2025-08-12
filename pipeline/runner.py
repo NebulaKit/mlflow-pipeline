@@ -32,6 +32,9 @@ def run_pipeline(config: Config):
 
     classifiers = get_classifiers()
     to_run = config.models_to_run or classifiers.keys()
+    
+    df_cv = pd.DataFrame(columns=['Classifier', 'AUCS'])
+    df_final = pd.DataFrame(columns=['Classifier', 'AUC', 'Accuracy', 'Precision', 'Recall', 'F1'])
 
     for name in to_run:
         print(f'Running: {name}')
@@ -45,12 +48,21 @@ def run_pipeline(config: Config):
             cv_metrics = evaluate_cv(model, X_train, y_train, folds=config.cv_folds)
             for m, val in cv_metrics.items():
                 mlflow.log_metric(f"cv_{m.lower()}", val["mean"])
+                print(f"cv_{m.lower()}s", val["aucs"])
+                print(f"cv_{m.lower()}_avg", val["mean"])
+                df_cv = pd.concat([df_cv, pd.DataFrame([{'Classifier': name, 'AUCS': val["aucs"]}])], ignore_index=True)
 
             # Fit & test
             model.fit(X_train, y_train)
             test_metrics = evaluate_test(model, X_test, y_test)
             for m, val in test_metrics.items():
                 mlflow.log_metric(f"test_{m.lower()}", val)
+                print(f"test_{m.lower()}", val)
+            df_final = pd.concat([df_final, pd.DataFrame([{'Classifier': name, 'AUC': test_metrics['AUC'], 
+                                                            'Accuracy': test_metrics['Accuracy'], 
+                                                            'Precision': test_metrics['Precision'], 
+                                                            'Recall': test_metrics['Recall'], 
+                                                            'F1': test_metrics['F1']}])], ignore_index=True)
 
             # Save model
             model_path = os.path.join(config.model_dir, f"{name}.joblib")
@@ -58,12 +70,27 @@ def run_pipeline(config: Config):
             mlflow.log_artifact(model_path)
 
             # SHAP
-            shap_path = os.path.join(config.output_dir, f"{name}_shap.png")
+            shap_dir = f"{config.output_dir}\shap"
+            os.makedirs(shap_dir, exist_ok=True)
+            shap_path = os.path.join(shap_dir, f"{name}_shap.png") # TODO: pass only shap_dir
             class_names = (
                 label_encoder.inverse_transform(model.classes_).tolist()
                 if label_encoder is not None
                 else [str(cls) for cls in model.classes_]
             )
-            shap_paths = explain_model(model, X_test, output_path=shap_path, class_names=class_names)
+            shap_paths = explain_model(model, X_test,
+                                       output_path=shap_path,
+                                       class_names=class_names,
+                                       feature_map_path = config.feature_map_path)
             for p in shap_paths:
                 mlflow.log_artifact(p)
+
+    # Save CV results
+    cv_results_path = os.path.join(config.output_dir, "cv_results.csv")
+    df_cv.to_csv(cv_results_path, index=False)
+    mlflow.log_artifact(cv_results_path)
+    
+    # Save final results
+    final_results_path = os.path.join(config.output_dir, "final_results.csv")
+    df_final.to_csv(final_results_path, index=False)
+    mlflow.log_artifact(final_results_path)

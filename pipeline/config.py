@@ -6,6 +6,7 @@ import os
 class Config:
     data_path: str = "data/raw/synthetic_lipidomics.csv"
     label_col: str = "Group"
+    feature_map_path: str = "data/raw/lipid_map.csv"
     seed: int = 42
     test_size: float = 0.2
     cv_folds: int = 5

@@ -6,3 +6,7 @@ environment-win-64.lock.yaml
 
 # MLflow local logs
 mlruns/
+
+data/processed/
+data/raw/lipid_metadata_core.csv
+data/raw/lipidomics.csv

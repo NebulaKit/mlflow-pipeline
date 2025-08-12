@@ -37,6 +37,7 @@ def evaluate_cv(model, X, y, folds):
 
     return {
         "AUC": {
+            "aucs": aucs,
             "mean": avg_auc,
             "sem": stderr,
             "ci_lower": ci_low,
