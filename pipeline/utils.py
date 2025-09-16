@@ -20,6 +20,7 @@ def override_config_from_args(config: Config, args: Union[Namespace, dict]) -> C
         }
     )
 
+
 def save_preprocessing_artifacts(
     le_dict: Dict[str, LabelEncoder],
     label_encoder: Optional[LabelEncoder],
@@ -35,3 +36,22 @@ def save_preprocessing_artifacts(
         "target_encoder": label_encoder,
         "scaler": scaler
     }, output_path)
+    
+    
+def resolve_scoring(y, user_metric: Optional[str]) -> str:
+    """
+    Resolve scoring metric for GridSearchCV.
+    - Uses user-specified metric if provided.
+    - Otherwise defaults to 'roc_auc' (binary) or 'roc_auc_ovr' (multi-class).
+    """
+    import numpy as np
+
+    is_multiclass = len(np.unique(y)) > 2
+
+    if user_metric is not None:
+        return user_metric  # Trust user choice
+
+    if is_multiclass:
+        return "roc_auc_ovr"   # One-vs-Rest macro AUC
+    else:
+        return "roc_auc"

@@ -1,11 +1,57 @@
 import polars as pl
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from typing import Tuple, Dict, Union
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import (
+    LabelEncoder,
+    StandardScaler,
+    MinMaxScaler,
+    RobustScaler,
+    MaxAbsScaler,
+    QuantileTransformer,
+    FunctionTransformer
+)
 
 
-def preprocess_features(X: pl.DataFrame) -> Tuple[pl.DataFrame, Dict[str, LabelEncoder], StandardScaler]:
+def get_scaler(method:str):
+    """
+    Returns a Scikit-learn transformer based on the chosen scaling method.
+    Supports:
+    - standard: StandardScaler
+    - log2: log2 transform + StandardScaler
+    - log10: log10 transform + StandardScaler
+    - minmax: MinMaxScaler
+    - robust: RobustScaler
+    - maxabs: MaxAbsScaler
+    - quantile: QuantileTransformer
+    """
+    method = method.lower()
+    if method == 'standard':
+        return StandardScaler()
+    elif method == 'log2':
+        return Pipeline([
+            ('log2', FunctionTransformer(func=np.log2, inverse_func=np.exp2, validate=True)),
+            ('scaler', StandardScaler())
+        ])
+    elif method == 'log10':
+        return Pipeline([
+            ('log10', FunctionTransformer(func=np.log10, inverse_func=lambda x: 10**x, validate=True)),
+            ('scaler', StandardScaler())
+        ])
+    elif method == 'minmax':
+        return MinMaxScaler()
+    elif method == 'robust':
+        return RobustScaler()
+    elif method == 'maxabs':
+        return MaxAbsScaler()
+    elif method == 'quantile':
+        return QuantileTransformer(output_distribution='normal')
+    else:
+        raise ValueError(f"Unsupported scaling method: {method}")
+
+
+def preprocess_features(X: pl.DataFrame, scaling_method: str = "standard") -> Tuple[pl.DataFrame, Dict[str, LabelEncoder], object]:
     """
     Preprocesses the feature matrix X:
     - Label encodes categorical features (Utf8 and bool)
@@ -36,7 +82,7 @@ def preprocess_features(X: pl.DataFrame) -> Tuple[pl.DataFrame, Dict[str, LabelE
 
     # Scale numeric features
     numeric_cols = df_pd.select_dtypes(include=np.number).columns.tolist()
-    scaler = StandardScaler()
+    scaler = get_scaler(scaling_method)
     df_pd[numeric_cols] = scaler.fit_transform(df_pd[numeric_cols])
 
     # Return Polars DataFrame + encoders

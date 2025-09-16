@@ -1,21 +1,29 @@
 import os
 import joblib
 import mlflow
+import mlflow.sklearn
 import pandas as pd
 from pipeline.config import Config
 from pipeline.data_loader import load_data
 from pipeline.preprocessing import preprocess_features, preprocess_target
-from pipeline.utils import save_preprocessing_artifacts
+from pipeline.utils import save_preprocessing_artifacts, resolve_scoring
 from pipeline.model_registry import get_classifiers
 from pipeline.evaluator import evaluate_cv, evaluate_test
 from pipeline.explainer import explain_model
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.base import clone
+
 
 def run_pipeline(config: Config):
     mlflow.set_experiment(config.experiment_name)
+    
+    # Enable MLflow autologging for sklearn
+    # mlflow.sklearn.autolog()
+    # Does not support polars dataframes yet
 
     # Load and preprocess
     X_raw, y_raw = load_data(config.data_path, config.label_col)
-    X, le_dict, scaler = preprocess_features(X_raw)
+    X, le_dict, scaler = preprocess_features(X_raw, scaling_method=config.scaling_method)
     y, label_encoder = preprocess_target(y_raw)
     save_preprocessing_artifacts(
         le_dict,
@@ -23,26 +31,55 @@ def run_pipeline(config: Config):
         scaler,
         output_path=config.preprocessing_artifact_path
     )
+    mlflow.log_param("scaling_method", config.scaling_method)
 
     # Split
-    from sklearn.model_selection import train_test_split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=config.test_size, stratify=y, random_state=config.seed
     )
 
-    classifiers = get_classifiers()
+    classifiers = get_classifiers(config.seed)
     to_run = config.models_to_run or classifiers.keys()
     
     df_cv = pd.DataFrame(columns=['Classifier', 'AUCS'])
-    df_final = pd.DataFrame(columns=['Classifier', 'AUC', 'Accuracy', 'Precision', 'Recall', 'F1'])
+    # df_final = pd.DataFrame(columns=['Classifier', 'AUC', 'Accuracy', 'Precision', 'Recall', 'F1'])
+    results = []
 
     for name in to_run:
+        mlflow.end_run()  # End previous run if any
         print(f'Running: {name}')
         with mlflow.start_run(run_name=name):
-            model = classifiers[name]
+            model, param_grid = classifiers[name]
+            
             mlflow.log_param("model", name)
             mlflow.log_param("seed", config.seed)
             mlflow.log_param("cv_folds", config.cv_folds)
+            
+            
+            if config.do_grid_search and param_grid:
+                from sklearn.model_selection import GridSearchCV
+                scoring = resolve_scoring(y_train, config.grid_search_metric)
+                print(f"Performing grid search for {name} optimizing {scoring}...")
+                mlflow.log_param("grid_search", True)
+                mlflow.log_param("grid_search_metric", scoring)
+                grid = GridSearchCV(
+                    estimator=model,
+                    param_grid=param_grid,
+                    scoring=scoring,
+                    cv=config.cv_folds,
+                    n_jobs=-1,
+                    verbose=1
+                )
+                grid.fit(X_train, y_train)
+                best_model = grid.best_estimator_
+                
+                mlflow.log_params(grid.best_params_)
+                print("Best parameters found: ", grid.best_params_)
+                mlflow.log_metric("cv_best_score", grid.best_score_)
+                
+                # Get an unfitted clone with the same hyperparameters
+                model = clone(best_model)
+                    
 
             # CV
             cv_metrics = evaluate_cv(model, X_train, y_train, folds=config.cv_folds)
@@ -58,14 +95,18 @@ def run_pipeline(config: Config):
             for m, val in test_metrics.items():
                 mlflow.log_metric(f"test_{m.lower()}", val)
                 print(f"test_{m.lower()}", val)
-            df_final = pd.concat([df_final, pd.DataFrame([{'Classifier': name, 'AUC': test_metrics['AUC'], 
-                                                            'Accuracy': test_metrics['Accuracy'], 
-                                                            'Precision': test_metrics['Precision'], 
-                                                            'Recall': test_metrics['Recall'], 
-                                                            'F1': test_metrics['F1']}])], ignore_index=True)
+                
+            results.append({
+                'Classifier': name,
+                'AUC': test_metrics['AUC'],
+                'Accuracy': test_metrics['Accuracy'],
+                'Precision': test_metrics['Precision'],
+                'Recall': test_metrics['Recall'],
+                'F1': test_metrics['F1']
+            })
 
             # Save model
-            model_path = os.path.join(config.model_dir, f"{name}.joblib")
+            model_path = os.path.join(config.models_dir, f"{name}.joblib")
             joblib.dump(model, model_path)
             mlflow.log_artifact(model_path)
 
@@ -92,5 +133,6 @@ def run_pipeline(config: Config):
     
     # Save final results
     final_results_path = os.path.join(config.output_dir, "final_results.csv")
+    df_final = pd.DataFrame(results)
     df_final.to_csv(final_results_path, index=False)
     mlflow.log_artifact(final_results_path)

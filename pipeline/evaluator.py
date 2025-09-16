@@ -2,6 +2,7 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 )
 from sklearn.model_selection import StratifiedKFold
+from sklearn.base import clone
 from scipy import stats
 import numpy as np
 
@@ -17,11 +18,12 @@ def evaluate_cv(model, X, y, folds):
     is_multiclass = len(np.unique(y)) > 2
 
     for train_idx, val_idx in skf.split(X, y):
+        model_cv = clone(model)
         X_train_cv, X_val = X[train_idx], X[val_idx]
         y_train_cv, y_val = y[train_idx], y[val_idx]
 
-        model.fit(X_train_cv, y_train_cv)
-        y_val_proba = model.predict_proba(X_val)
+        model_cv.fit(X_train_cv, y_train_cv)
+        y_val_proba = model_cv.predict_proba(X_val)
 
         if is_multiclass:
             auc = roc_auc_score(y_val, y_val_proba, multi_class='ovr', average='macro')
@@ -64,7 +66,7 @@ def evaluate_test(model, X_test, y_test):
     return {
         "AUC": auc,
         "Accuracy": accuracy_score(y_test, y_pred),
-        "Precision": precision_score(y_test, y_pred, average="macro" if is_multiclass else "binary"),
-        "Recall": recall_score(y_test, y_pred, average="macro" if is_multiclass else "binary"),
+        "Precision": precision_score(y_test, y_pred, average="macro" if is_multiclass else "binary", zero_division=0),
+        "Recall": recall_score(y_test, y_pred, average="macro" if is_multiclass else "binary", zero_division=0),
         "F1": f1_score(y_test, y_pred, average="macro" if is_multiclass else "binary")
     }

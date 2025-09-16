@@ -7,6 +7,24 @@ entry_points:
     parameters:
       data_path: {type: str, default: "data/raw/synthetic_lipidomics.csv"}
       label_col: {type: str, default: "Group"}
+      feature_map_path: {type: str, default: "data/raw/lipid_map.csv"} # Optional parameter for feature mapping (perhaps should leave empty by default)
+      scaling_method: {type: str, default: "standard"} # options: 'standard', 'log2', 'log10', 'minmax', 'robust', 'maxabs', 'quantile'
+      test_size: {type: float, default: 0.2}
+      seed: {type: int, default: 42}
+      cv_folds: {type: int, default: 5}
+      models_to_run: {type: str, default: ""} # Comma-separated list of models to run, empty string means all models
+      do_grid_search: {type: bool, default: False}
+      grid_search_metric: {type: str, default: "f1_macro"} # Metric to optimize during grid search
+      output_dir: {type: str, default: "outputs/"}
+      models_dir: {type: str, default: "models/"}
       experiment_name: {type: str, default: "Lipidomics_ML_Models"}
     command: >
-      python main.py --data_path {data_path} --label_col {label_col}
+      python main.py 
+        --data_path {data_path}
+        --label_col {label_col}
+        --feature_map_path {feature_map_path}
+        --test_size {test_size}
+        --seed {seed}
+        --cv_folds {cv_folds}
+        --models_to_run {models_to_run}
+        --experiment_name {experiment_name}
