@@ -11,9 +11,9 @@ def get_classifiers(seed: int):
         'XGBoost': (
            XGBClassifier(eval_metric='logloss', random_state=seed),
            {
-               'n_estimators': [30, 50, 100, 200],
-               'max_depth': [2, 3, 5, 7],
-               'learning_rate': [0.1, 0.2, 0.3, 0.35]
+               'n_estimators': [30, 50, 100],
+               'max_depth': [2, 3, 5],
+               'learning_rate': [0.2, 0.3, 0.35]
            }
         ),
         'LASSO': (

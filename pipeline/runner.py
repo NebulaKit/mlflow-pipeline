@@ -5,7 +5,8 @@ import mlflow.sklearn
 import pandas as pd
 from pipeline.config import Config
 from pipeline.data_loader import load_data
-from pipeline.preprocessing import preprocess_features, preprocess_target
+from pipeline.preprocessing.preprocessor import Preprocessor
+from pipeline.preprocessing.target_preprocessor import preprocess_target
 from pipeline.utils import save_preprocessing_artifacts, resolve_scoring
 from pipeline.model_registry import get_classifiers
 from pipeline.evaluator import evaluate_cv, evaluate_test
@@ -21,28 +22,37 @@ def run_pipeline(config: Config):
     # mlflow.sklearn.autolog()
     # Does not support polars dataframes yet
 
-    # Load and preprocess
+    # Load data
     X_raw, y_raw = load_data(config.data_path, config.label_col)
-    X, le_dict, scaler = preprocess_features(X_raw, scaling_method=config.scaling_method)
-    y, label_encoder = preprocess_target(y_raw)
+    
+    # Split
+    X_train_raw, X_test_raw, y_train_raw, y_test_raw = train_test_split(
+        X_raw, y_raw, test_size=config.test_size, stratify=y_raw, random_state=config.seed
+    )
+    
+    # Target preprocessing
+    y_train, label_encoder = preprocess_target(y_train_raw)
+    y_test, _ = preprocess_target(y_test_raw)
+    
+    # Feature preprocessing
+    preprocessor = Preprocessor(scaling_method=config.scaling_method)
+    X_train = preprocessor.fit_transform(X_train_raw)
+    X_test = preprocessor.transform(X_test_raw)
+    
+    # Save preprocessing artifacts
     save_preprocessing_artifacts(
-        le_dict,
+        preprocessor.label_encoders,
         label_encoder,
-        scaler,
+        preprocessor.scaler,
         output_path=config.preprocessing_artifact_path
     )
     mlflow.log_param("scaling_method", config.scaling_method)
 
-    # Split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=config.test_size, stratify=y, random_state=config.seed
-    )
-
+    
     classifiers = get_classifiers(config.seed)
     to_run = config.models_to_run or classifiers.keys()
     
     df_cv = pd.DataFrame(columns=['Classifier', 'AUCS'])
-    # df_final = pd.DataFrame(columns=['Classifier', 'AUC', 'Accuracy', 'Precision', 'Recall', 'F1'])
     results = []
 
     for name in to_run:

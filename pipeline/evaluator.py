@@ -19,8 +19,8 @@ def evaluate_cv(model, X, y, folds):
 
     for train_idx, val_idx in skf.split(X, y):
         model_cv = clone(model)
-        X_train_cv, X_val = X[train_idx], X[val_idx]
-        y_train_cv, y_val = y[train_idx], y[val_idx]
+        X_train_cv, X_val = X.iloc[train_idx], X.iloc[val_idx]
+        y_train_cv, y_val = y.iloc[train_idx], y.iloc[val_idx]
 
         model_cv.fit(X_train_cv, y_train_cv)
         y_val_proba = model_cv.predict_proba(X_val)
