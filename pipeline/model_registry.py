@@ -5,9 +5,23 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
+import numpy as np
+
 
 def get_classifiers(seed: int):
     return {
+        "MLP": ( 
+            MLPClassifier(max_iter=1000, random_state=seed, early_stopping=True, n_iter_no_change=15, validation_fraction=0.15), 
+            { 
+             "hidden_layer_sizes": [ (64,), (128,), (64, 32), (128, 64), ],
+             "activation": ["relu", "tanh"],
+             "alpha": [1e-5, 1e-4, 1e-3],
+             "learning_rate_init": [1e-4, 3e-4, 1e-3],
+             "solver": ["adam"], 
+             "batch_size": ["auto", 32, 64, 128],
+             "beta_1": [0.9, 0.95]
+            }
+        ),
         'XGBoost': (
            XGBClassifier(eval_metric='logloss', random_state=seed),
            {
@@ -17,9 +31,10 @@ def get_classifiers(seed: int):
            }
         ),
         'LASSO': (
-            LogisticRegression(penalty="l1", solver="saga", max_iter=20000, random_state=seed), # penalty='l1', 
+            LogisticRegression(penalty="l1", solver="saga", max_iter=20000, random_state=seed),
             {
-                "C": [0.01, 0.1, 1, 10, 100]
+                "C": np.logspace(-2, 2, 5),
+                "class_weight": [None, "balanced"]
             }     
         ),
         # 'ElasticNet': LogisticRegression(penalty='elasticnet', solver='saga', l1_ratio=0.5, max_iter=10000),
@@ -47,6 +62,5 @@ def get_classifiers(seed: int):
                 'max_depth': [None, 5, 10, 20],
                 'min_samples_split': [2, 5, 10]
             }
-        ),
-        #'MLP': MLPClassifier(max_iter=1000)
+        )
     }

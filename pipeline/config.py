@@ -2,10 +2,12 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 import os
 
+
 @dataclass
 class Config:
     data_path: str = "data/raw/synthetic_lipidomics.csv"
     label_col: str = "Group"
+    control_name: str = "D"
     feature_map_path: str = "data/raw/lipid_map.csv"
     scaling_method: str = "standard" # options: 'standard', 'log2', 'log10', 'minmax', 'robust', 'maxabs', 'quantile'
     seed: int = 42
@@ -17,6 +19,7 @@ class Config:
     output_dir: str = "outputs/"
     models_dir: str = "models/"
     experiment_name: str = "Lipidomics_ML_Models"
+    shap_max_display: int = 10
     
     @property
     def preprocessing_artifact_path(self) -> str:

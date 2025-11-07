@@ -7,6 +7,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str)
     parser.add_argument("--label_col", type=str)
+    parser.add_argument("--control_name", type=str)
     parser.add_argument("--feature_map_path", type=str)
     parser.add_argument("--scaling_method", type=str, choices=['standard', 'log2', 'log10', 'minmax', 'robust', 'maxabs', 'quantile'], default='standard')
     parser.add_argument("--test_size", type=float)
@@ -18,6 +19,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str)
     parser.add_argument("--models_dir", type=str)   
     parser.add_argument("--experiment_name", type=str)
+    parser.add_argument("--shap_max_display", type=int)
     args = parser.parse_args()
 
     # Start with default config

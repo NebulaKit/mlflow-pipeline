@@ -3,6 +3,7 @@ import joblib
 import mlflow
 import mlflow.sklearn
 import pandas as pd
+import numpy as np
 from pipeline.config import Config
 from pipeline.data_loader import load_data
 from pipeline.preprocessing.preprocessor import Preprocessor
@@ -11,7 +12,9 @@ from pipeline.utils import save_preprocessing_artifacts, resolve_scoring
 from pipeline.model_registry import get_classifiers
 from pipeline.evaluator import evaluate_cv, evaluate_test
 from pipeline.explainer import explain_model
-from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.model_selection import train_test_split
+from pipeline.differential_expression_analysis import plot_de_boxplots_for_top_features
+from pipeline.shap_aggregate import aggregate_shap_and_get_top
 from sklearn.base import clone
 
 
@@ -19,7 +22,7 @@ def run_pipeline(config: Config):
     mlflow.set_experiment(config.experiment_name)
     
     # Enable MLflow autologging for sklearn
-    # mlflow.sklearn.autolog()
+    mlflow.sklearn.autolog()
     # Does not support polars dataframes yet
 
     # Load data
@@ -33,6 +36,9 @@ def run_pipeline(config: Config):
     # Target preprocessing
     y_train, label_encoder = preprocess_target(y_train_raw)
     y_test, _ = preprocess_target(y_test_raw)
+    n_classes = len(np.unique(y_train))
+    class_names = label_encoder.inverse_transform(np.arange(n_classes)).tolist()
+    print(f"Classes detected: {class_names}")
     
     # Feature preprocessing
     preprocessor = Preprocessor(scaling_method=config.scaling_method)
@@ -40,11 +46,13 @@ def run_pipeline(config: Config):
     X_test = preprocessor.transform(X_test_raw)
     
     # Save preprocessing artifacts
+    data_file_name = os.path.splitext(os.path.basename(config.data_path))[0]
     save_preprocessing_artifacts(
         preprocessor.label_encoders,
         label_encoder,
         preprocessor.scaler,
-        output_path=config.preprocessing_artifact_path
+        dir_name=config.models_dir,
+        data_file_name=data_file_name
     )
     mlflow.log_param("scaling_method", config.scaling_method)
 
@@ -85,7 +93,7 @@ def run_pipeline(config: Config):
                 
                 mlflow.log_params(grid.best_params_)
                 print("Best parameters found: ", grid.best_params_)
-                mlflow.log_metric("cv_best_score", grid.best_score_)
+                mlflow.log_metric("cv_best_score", grid.best_score_) # TODO: not logged properly
                 
                 # Get an unfitted clone with the same hyperparameters
                 model = clone(best_model)
@@ -116,33 +124,79 @@ def run_pipeline(config: Config):
             })
 
             # Save model
-            model_path = os.path.join(config.models_dir, f"{name}.joblib")
+            model_path = os.path.join(config.models_dir, data_file_name,  f"{name}.joblib")
             joblib.dump(model, model_path)
             mlflow.log_artifact(model_path)
 
             # SHAP
-            shap_dir = f"{config.output_dir}\shap"
+            print(f"Explaining model {name} with SHAP...")
+            shap_dir = os.path.join(config.output_dir, data_file_name, "shap", name)
             os.makedirs(shap_dir, exist_ok=True)
-            shap_path = os.path.join(shap_dir, f"{name}_shap.png") # TODO: pass only shap_dir
-            class_names = (
-                label_encoder.inverse_transform(model.classes_).tolist()
-                if label_encoder is not None
-                else [str(cls) for cls in model.classes_]
-            )
-            shap_paths = explain_model(model, X_test,
-                                       output_path=shap_path,
+            shap_paths, top_feats  = explain_model(model,
+                                       name,
+                                       X_test,
+                                       output_dir=shap_dir,
                                        class_names=class_names,
-                                       feature_map_path = config.feature_map_path)
+                                       feature_map_path = config.feature_map_path,
+                                       max_plot_display=config.shap_max_display)
+            
+            
+            # DE analysis boxplots for top SHAP features
+            print(f"Preparing DE analysis boxplots for top SHAP features: {top_feats}")
+            class_plot_paths = plot_de_boxplots_for_top_features(
+                top_features_per_class=top_feats,
+                X_raw=X_raw,
+                y_raw=y_raw,
+                group_col_name=config.label_col,
+                control_name=config.control_name,
+                output_dir=shap_dir,
+                model_name=name,
+                feature_map_path=config.feature_map_path,
+                use_log2_fc=True,
+                facet_cols=5
+            )
+            
+            # Log to MLflow
             for p in shap_paths:
                 mlflow.log_artifact(p)
+            for p in class_plot_paths.values():
+                mlflow.log_artifact(p)
+    
 
     # Save CV results
-    cv_results_path = os.path.join(config.output_dir, "cv_results.csv")
+    cv_results_path = os.path.join(config.output_dir, data_file_name, "cv_results.csv")
     df_cv.to_csv(cv_results_path, index=False)
     mlflow.log_artifact(cv_results_path)
     
-    # Save final results
-    final_results_path = os.path.join(config.output_dir, "final_results.csv")
+    # Save final model results
+    final_results_path = os.path.join(config.output_dir, data_file_name, "final_results.csv")
     df_final = pd.DataFrame(results)
     df_final.to_csv(final_results_path, index=False)
     mlflow.log_artifact(final_results_path)
+    
+    # Aggregate SHAP values across classifiers and perform DE analysis
+    print("Aggregating SHAP values across classifiers and extracting biomarkers...")
+    shap_root = os.path.join(config.output_dir, data_file_name, "shap")
+    agg_dir = os.path.join(config.output_dir, data_file_name, "shap", "aggregate")
+    os.makedirs(agg_dir, exist_ok=True)
+
+    top_feats_agg = aggregate_shap_and_get_top(
+        shap_root_dir=shap_root,
+        class_names=class_names,
+        top_n=config.shap_max_display
+    )
+
+    agg_class_plot_paths = plot_de_boxplots_for_top_features(
+        top_features_per_class=top_feats_agg,
+        X_raw=X_raw,
+        y_raw=y_raw,
+        group_col_name=config.label_col,
+        control_name=config.control_name,
+        output_dir=agg_dir,
+        model_name="Cross-Model Consensus",
+        feature_map_path=config.feature_map_path,
+        use_log2_fc=True,
+        facet_cols=5
+    )
+    for p in agg_class_plot_paths.values():
+        mlflow.log_artifact(p)
