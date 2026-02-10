@@ -10,8 +10,8 @@ def preprocess_target(y: pd.Series):
     - Label encodes if not already numeric
     - Returns pandas Series and optional LabelEncoder
     """
-    if pd.api.types.is_numeric_dtype(y):
-        return y, None
+    #if pd.api.types.is_numeric_dtype(y):
+    #    return y, None
 
     le = LabelEncoder()
     y_encoded = le.fit_transform(y.astype(str))

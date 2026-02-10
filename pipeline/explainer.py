@@ -90,6 +90,7 @@ def explain_model(
             )
 
     else:
+        print("Binary classification detected for SHAP explanation.")
         # Binary: use positive class
         class_shap = shap_values[1] if isinstance(shap_values, list) and len(shap_values) >= 2 else shap_values
 
@@ -97,7 +98,9 @@ def explain_model(
         mean_abs = np.abs(class_shap).mean(axis=0)
         order = np.argsort(mean_abs)[::-1][:max_plot_display]
         pos_key = class_names[-1] if len(class_names) >= 2 else "positive"
-        top_features_per_class[pos_key] = [original_feature_ids[j] for j in order]
+        order = np.asarray(order).ravel().astype(int)
+        orig = np.asarray(original_feature_ids)
+        top_features_per_class[pos_key] = orig[order].tolist()
 
         # Plot + save
         path = os.path.join(output_dir, f"positive_class_summary_plot.png")

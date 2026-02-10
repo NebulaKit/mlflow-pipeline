@@ -37,7 +37,11 @@ def run_pipeline(config: Config):
     y_train, label_encoder = preprocess_target(y_train_raw)
     y_test, _ = preprocess_target(y_test_raw)
     n_classes = len(np.unique(y_train))
-    class_names = label_encoder.inverse_transform(np.arange(n_classes)).tolist()
+    print(f"label_encoder: {label_encoder}")
+    if label_encoder is not None:
+        class_names = label_encoder.inverse_transform(np.arange(n_classes)).tolist()
+    else:
+        class_names = np.unique(y_train).tolist()
     print(f"Classes detected: {class_names}")
     
     # Feature preprocessing
@@ -130,6 +134,7 @@ def run_pipeline(config: Config):
 
             # SHAP
             print(f"Explaining model {name} with SHAP...")
+            print(f"Class names: {class_names}")
             shap_dir = os.path.join(config.output_dir, data_file_name, "shap", name)
             os.makedirs(shap_dir, exist_ok=True)
             shap_paths, top_feats  = explain_model(model,

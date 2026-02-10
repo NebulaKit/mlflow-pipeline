@@ -10,6 +10,10 @@ mlruns/
 data/processed/
 data/raw/lipid_metadata_core.csv
 data/raw/lipidomics.csv
+data/alternative/
+data/HMGCR/
+data/raw/miRDat_AdiposLabeled.csv
+data/raw/miRDat_DiabetesLabeled.csv
 
 models/*
 outputs/
